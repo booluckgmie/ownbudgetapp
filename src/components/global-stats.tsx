@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useEffect, useState } from 'react';
 import type { Quest, Settings, } from '@/types';
 import { CURRENCIES, DEFAULT_CURRENCY } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,11 @@ interface GlobalStatsProps {
 }
 
 export function GlobalStats({ quests, archivedQuests, settings, onSettingsChange }: GlobalStatsProps) {
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const activeQuests = quests.filter(q => !archivedQuests.some(aq => aq.id === q.id));
 
   const totalActiveIncome = activeQuests.reduce((sum, q) => sum + q.income, 0);
@@ -58,12 +64,19 @@ export function GlobalStats({ quests, archivedQuests, settings, onSettingsChange
         {/* Quest Counts */}
         <div className="flex flex-col space-y-2">
           <div className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg">
-             <span className="text-muted-foreground text-sm">Active Quests</span>
-             <Badge variant="secondary" className="text-base">{activeQuests.length}</Badge>
+            <span className="text-muted-foreground text-sm">Active Quests</span>
+            <Badge variant="secondary" className="text-base">
+              {isClient ? activeQuests.length : '...'}
+            </Badge>
           </div>
           <div className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg">
-             <span className="text-muted-foreground text-sm">Archived Quests</span>
-             <Badge variant="secondary" className="text-base">{archivedQuests.length}</Badge>
+            <span className="text-muted-foreground text-sm">
+              Archived Quests
+            </span>
+            <Badge variant="secondary" className="text-base">
+              {isClient ? archivedQuests.length : '...'}
+            </Badge>
+
           </div>
         </div>
 
