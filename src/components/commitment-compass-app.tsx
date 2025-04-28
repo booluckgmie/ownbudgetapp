@@ -2,13 +2,15 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import type { Commitment, Quest } from '@/types';
+import type { Commitment, Quest, Settings } from '@/types';
+import { DEFAULT_CURRENCY } from '@/types';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { IncomeInput } from '@/components/income-input';
 import { CommitmentList } from '@/components/commitment-list';
 import { CommitmentForm } from '@/components/commitment-form';
 import { StatsDashboard } from '@/components/stats-dashboard';
 import { QuestManager } from '@/components/quest-manager';
+import { GlobalStats } from '@/components/global-stats'; // Import GlobalStats
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { RotateCcw } from 'lucide-react';
@@ -23,20 +25,29 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { getCurrencySymbol } from '@/lib/utils'; // Import utility
 
 export function CommitmentCompassApp() {
   const [quests, setQuests] = useLocalStorage<Quest[]>('quests', []);
+  const [questHistory, setQuestHistory] = useLocalStorage<Quest[]>('questHistory', []);
   const [activeQuestId, setActiveQuestId] = useLocalStorage<string | null>('activeQuestId', null);
+  const [settings, setSettings] = useLocalStorage<Settings>('appSettings', { currency: DEFAULT_CURRENCY });
   const [commitmentToEdit, setCommitmentToEdit] = useState<Commitment | null>(null);
   const [showResetDialog, setShowResetDialog] = useState(false);
 
+
   // Find the active quest object based on the ID
   const activeQuest = quests.find(q => q.id === activeQuestId);
-  const isArchived = useLocalStorage<Quest[]>('questHistory', [])[0].some(q => q.id === activeQuestId); // Check if active quest is in history
+  // Determine if the currently viewed quest (activeQuestId) is in the history
+  const isArchived = activeQuestId ? questHistory.some(q => q.id === activeQuestId) : false;
+
 
   // Effect to ensure there's always at least one quest, or set active ID if needed
   useEffect(() => {
-     if (quests.length === 0) {
+     // Combine active and archived quests for initial setup logic
+     const allKnownQuests = [...quests, ...questHistory];
+
+     if (allKnownQuests.length === 0) {
         const initialQuest: Quest = {
            id: crypto.randomUUID(),
            name: "My First Quest",
@@ -44,40 +55,79 @@ export function CommitmentCompassApp() {
            commitments: [],
            createdAt: Date.now(),
         };
-        setQuests([initialQuest]);
-        setActiveQuestId(initialQuest.id);
+        setQuests([initialQuest]); // Add to quests list
+        setActiveQuestId(initialQuest.id); // Activate it
      } else if (!activeQuestId && quests.length > 0) {
-        // If no active ID but quests exist, activate the latest one
+        // If no active ID but non-archived quests exist, activate the latest non-archived one
         const sortedQuests = [...quests].sort((a, b) => b.createdAt - a.createdAt);
         setActiveQuestId(sortedQuests[0].id);
-     } else if (activeQuestId && !quests.some(q => q.id === activeQuestId)) {
-        // If active ID points to a non-existent quest (e.g., after delete), activate the latest or null
-        const sortedQuests = [...quests].sort((a, b) => b.createdAt - a.createdAt);
-         setActiveQuestId(sortedQuests.length > 0 ? sortedQuests[0].id : null);
+     } else if (activeQuestId && !allKnownQuests.some(q => q.id === activeQuestId)) {
+         // If active ID points to a deleted quest, try activating the latest non-archived quest
+         const sortedQuests = [...quests].sort((a, b) => b.createdAt - a.createdAt);
+         if (sortedQuests.length > 0) {
+            setActiveQuestId(sortedQuests[0].id);
+         } else if (questHistory.length > 0) {
+            // If no active quests left, activate the latest archived quest
+             const sortedHistory = [...questHistory].sort((a, b) => b.createdAt - a.createdAt);
+             setActiveQuestId(sortedHistory[0].id);
+         } else {
+            // If truly no quests left anywhere, set active ID to null (should trigger initial quest creation)
+            setActiveQuestId(null);
+         }
+     } else if (!activeQuestId && quests.length === 0 && questHistory.length > 0) {
+         // If no active ID, no active quests, but archived quests exist, activate the latest archived
+         const sortedHistory = [...questHistory].sort((a, b) => b.createdAt - a.createdAt);
+         setActiveQuestId(sortedHistory[0].id);
      }
-  }, [quests, activeQuestId, setQuests, setActiveQuestId]);
+  }, [quests, questHistory, activeQuestId, setQuests, setQuestHistory, setActiveQuestId]);
 
 
   const updateQuest = (updatedQuest: Quest) => {
     setQuests(prevQuests => {
       const index = prevQuests.findIndex(q => q.id === updatedQuest.id);
       if (index > -1) {
-        // Update existing quest
+        // Update existing quest in active list
         const newQuests = [...prevQuests];
         newQuests[index] = updatedQuest;
         return newQuests;
       } else {
-        // Add new quest
+        // Add new quest to active list
         return [...prevQuests, updatedQuest];
       }
+    });
+    // Also update in history if it exists there
+    setQuestHistory(prevHistory => {
+        const index = prevHistory.findIndex(q => q.id === updatedQuest.id);
+        if (index > -1) {
+           const newHistory = [...prevHistory];
+           newHistory[index] = updatedQuest;
+           return newHistory;
+        }
+        return prevHistory; // Don't add to history here, only update
     });
   };
 
    const deleteQuest = (questId: string) => {
        setQuests(prevQuests => prevQuests.filter(q => q.id !== questId));
+       setQuestHistory(prevHistory => prevHistory.filter(q => q.id !== questId)); // Remove from history too
        // Active quest handling is done in useEffect
    };
 
+   const archiveQuest = (questToArchive: Quest) => {
+       // Remove from active quests list
+       setQuests(prevQuests => prevQuests.filter(q => q.id !== questToArchive.id));
+       // Add to history if not already there
+       setQuestHistory(prevHistory => {
+           if (!prevHistory.some(q => q.id === questToArchive.id)) {
+               return [...prevHistory, questToArchive];
+           }
+           return prevHistory;
+       });
+       // If archiving the active quest, clear the active ID (useEffect will handle selecting next)
+       if (activeQuestId === questToArchive.id) {
+          setActiveQuestId(null);
+       }
+   };
 
   const handleIncomeChange = (newIncome: number) => {
     if (activeQuest && !isArchived) {
@@ -105,11 +155,23 @@ export function CommitmentCompassApp() {
 
 
   const handleTogglePaid = (id: string) => {
-    if (activeQuest && !isArchived) {
-      const updatedCommitments = activeQuest.commitments.map(c =>
-        c.id === id ? { ...c, paid: !c.paid } : c
-      );
-      updateQuest({ ...activeQuest, commitments: updatedCommitments });
+    if (activeQuest) { // Allow toggling even if archived (for viewing)
+      const listToUpdate = isArchived ? questHistory : quests;
+      const setList = isArchived ? setQuestHistory : setQuests;
+
+      setList(prevList => {
+          const questIndex = prevList.findIndex(q => q.id === activeQuestId);
+          if (questIndex === -1) return prevList; // Should not happen
+
+          const currentQuest = prevList[questIndex];
+          const updatedCommitments = currentQuest.commitments.map(c =>
+             c.id === id ? { ...c, paid: !c.paid } : c
+           );
+
+           const newList = [...prevList];
+           newList[questIndex] = { ...currentQuest, commitments: updatedCommitments };
+           return newList;
+      });
     }
   };
 
@@ -136,33 +198,45 @@ export function CommitmentCompassApp() {
 
   const handleResetAllData = () => {
     setQuests([]);
+    setQuestHistory([]); // Clear history
     setActiveQuestId(null);
-    localStorage.removeItem('questHistory'); // Clear history too
-    localStorage.removeItem('activeQuestId'); // Clear active quest ID explicitly
-     localStorage.removeItem('quests'); // Clear quests explicitly
+    setSettings({ currency: DEFAULT_CURRENCY }); // Reset settings
+    localStorage.removeItem('questHistory'); // Clear explicitly just in case
+    localStorage.removeItem('activeQuestId');
+    localStorage.removeItem('quests');
+    localStorage.removeItem('appSettings');
     setShowResetDialog(false);
     // The useEffect will then create a new initial quest
   };
 
-  const totalCommitmentsValue = activeQuest?.commitments.reduce((sum, c) => sum + c.value, 0) ?? 0;
+  const handleSettingsChange = (newSettings: Partial<Settings>) => {
+      setSettings(prev => ({ ...prev, ...newSettings }));
+  };
+
+  // Find the full quest object from either quests or questHistory based on activeQuestId
+  const currentQuestData = quests.find(q => q.id === activeQuestId) || questHistory.find(q => q.id === activeQuestId);
+
+  const totalCommitmentsValue = currentQuestData?.commitments.reduce((sum, c) => sum + c.value, 0) ?? 0;
+  const currencySymbol = getCurrencySymbol(settings.currency);
 
   return (
-    <div className="container mx-auto p-4 max-w-4xl">
-      <header className="flex flex-col sm:flex-row justify-between items-center mb-6 pb-4 border-b">
-        <h1 className="text-3xl font-bold text-primary mb-2 sm:mb-0">
+     // Changed container to allow full width on mobile and max-w on larger screens
+    <div className="container mx-auto px-2 py-4 md:px-4 max-w-6xl">
+      <header className="flex flex-col sm:flex-row justify-between items-center mb-4 pb-4 border-b gap-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-primary text-center sm:text-left">
            Commitment Compass
         </h1>
          <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
            <AlertDialogTrigger asChild>
                <Button variant="destructive" size="sm">
-                   <RotateCcw className="mr-2 h-4 w-4" /> Reset All Data
+                   <RotateCcw className="mr-2 h-4 w-4" /> Reset All
                </Button>
            </AlertDialogTrigger>
             <AlertDialogContent>
                <AlertDialogHeader>
                   <AlertDialogTitle>Reset All Application Data?</AlertDialogTitle>
                   <AlertDialogDescription>
-                     This will permanently delete all your quests, income, commitments, and history. This action cannot be undone. Are you absolutely sure?
+                     This will permanently delete all your quests, income, commitments, history and settings. This action cannot be undone. Are you absolutely sure?
                   </AlertDialogDescription>
                </AlertDialogHeader>
                <AlertDialogFooter>
@@ -173,23 +247,38 @@ export function CommitmentCompassApp() {
                </AlertDialogFooter>
             </AlertDialogContent>
          </AlertDialog>
-
       </header>
+
+      {/* Global Stats and Settings */}
+      <GlobalStats
+          quests={quests}
+          archivedQuests={questHistory}
+          settings={settings}
+          onSettingsChange={handleSettingsChange}
+      />
 
 
        <QuestManager
           activeQuestId={activeQuestId}
           setActiveQuestId={setActiveQuestId}
-          onQuestUpdate={updateQuest} // Pass update function
+          onQuestUpdate={updateQuest}
           onQuestDelete={deleteQuest}
-          quests={quests}
+          onQuestArchive={archiveQuest} // Pass archive function
+          quests={quests} // Pass only active quests
+          archivedQuests={questHistory} // Pass archived quests
        />
 
-      {activeQuest ? (
-         <div className="space-y-6">
+      {currentQuestData ? (
+         <div className="space-y-4 md:space-y-6">
+             <h2 className="text-xl sm:text-2xl font-semibold text-center mt-4 mb-2">
+                 Viewing Quest: <span className="text-primary">{currentQuestData.name}</span>
+                 {isArchived && <span className="text-sm font-normal text-muted-foreground"> (Archived)</span>}
+             </h2>
+
              <IncomeInput
-                initialIncome={activeQuest.income}
+                initialIncome={currentQuestData.income}
                 onIncomeChange={handleIncomeChange}
+                currency={settings.currency}
                  disabled={isArchived}
              />
 
@@ -199,53 +288,55 @@ export function CommitmentCompassApp() {
                    editCommitment={handleEditCommitment}
                    commitmentToEdit={commitmentToEdit}
                    onEditCancel={handleCancelEdit}
+                   currencySymbol={currencySymbol}
                    disabled={isArchived}
                  />
              )}
 
              <CommitmentList
-               commitments={activeQuest.commitments}
+               commitments={currentQuestData.commitments}
                onTogglePaid={handleTogglePaid}
                onDelete={handleDeleteCommitment}
                onEdit={handleEditRequest}
                totalCommitmentsValue={totalCommitmentsValue}
+               currency={settings.currency}
                disabled={isArchived}
              />
 
              <StatsDashboard
-               income={activeQuest.income}
-               commitments={activeQuest.commitments}
+               income={currentQuestData.income}
+               commitments={currentQuestData.commitments}
+               currency={settings.currency}
              />
          </div>
       ) : (
-         <Card>
+         <Card className="mt-6">
             <CardHeader>
-               <CardTitle>No Active Quest</CardTitle>
+               <CardTitle>No Quest Selected</CardTitle>
             </CardHeader>
             <CardContent>
                 <CardDescription>
-                    Please select a quest or create a new one using the Quest Management tools above to start tracking your commitments.
+                    Please select or create a quest using the 'Quest Management' section above to start tracking your commitments.
                 </CardDescription>
             </CardContent>
          </Card>
       )}
 
-       {/* Simple User Guide Section */}
+       {/* Simple User Guide Section - Adjusted for mobile friendliness */}
        <Card className="mt-8">
          <CardHeader>
-            <CardTitle>Quick Guide</CardTitle>
+            <CardTitle className="text-lg">Quick Guide</CardTitle>
          </CardHeader>
-         <CardContent className="text-sm text-muted-foreground space-y-2">
-             <p>1. <strong className="text-foreground">Manage Quests:</strong> Use the 'Quest Management' section to create new quests, archive old ones, or select an existing quest to view/edit.</p>
-             <p>2. <strong className="text-foreground">Set Income:</strong> Enter your total income for the active quest in the 'Total Income' section.</p>
-             <p>3. <strong className="text-foreground">Add Commitments:</strong> Use the 'Add New Commitment' form to list your expenses (name and value).</p>
-             <p>4. <strong className="text-foreground">Track Progress:</strong> Mark commitments as 'Paid' using the checkboxes in the list. Edit or delete items using the action buttons.</p>
-             <p>5. <strong className="text-foreground">View Summary:</strong> Check the 'Quest Summary' dashboard for totals (paid, unpaid) and your remaining balance.</p>
-             <p>6. <strong className="text-foreground">Archive/Delete:</strong> Archive the current quest when finished, or delete unwanted archived quests using the buttons in the management section.</p>
-              <p>7. <strong className="text-foreground">Reset:</strong> Use the 'Reset All Data' button (top right) to clear everything and start fresh (use with caution!).</p>
+         <CardContent className="text-sm text-muted-foreground space-y-1">
+             <p><strong className="text-foreground">1. Global:</strong> Set currency & view overview.</p>
+             <p><strong className="text-foreground">2. Manage Quests:</strong> Create, archive, delete, or select quests.</p>
+             <p><strong className="text-foreground">3. Set Income:</strong> Enter income for the active quest.</p>
+             <p><strong className="text-foreground">4. Add Items:</strong> List expenses (name/value) in the form.</p>
+             <p><strong className="text-foreground">5. Track:</strong> Check off 'Paid' items. Edit/delete via icons.</p>
+             <p><strong className="text-foreground">6. Summary:</strong> See totals & balance in the dashboard.</p>
+             <p><strong className="text-foreground">7. Reset:</strong> Top-right button clears all data (caution!).</p>
          </CardContent>
        </Card>
     </div>
   );
 }
-

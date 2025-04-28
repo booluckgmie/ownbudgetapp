@@ -6,23 +6,34 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Check, Edit2 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils'; // Assuming utils file exists
+import { formatCurrency, getCurrencySymbol } from '@/lib/utils';
 
 interface IncomeInputProps {
   initialIncome: number;
   onIncomeChange: (newIncome: number) => void;
+  currency: string; // Added currency prop
   disabled?: boolean;
 }
 
-export function IncomeInput({ initialIncome, onIncomeChange, disabled = false }: IncomeInputProps) {
+export function IncomeInput({ initialIncome, onIncomeChange, currency, disabled = false }: IncomeInputProps) {
   const [income, setIncome] = useState(initialIncome.toString());
   const [isEditing, setIsEditing] = useState(false);
+  const currencySymbol = getCurrencySymbol(currency);
 
   useEffect(() => {
     // Update local state if initialIncome prop changes (e.g., switching quests)
      setIncome(initialIncome.toString());
-     setIsEditing(initialIncome === 0); // Start editing if income is 0 for a new quest
-  }, [initialIncome]);
+     // Only start editing if income is 0 AND the quest is not disabled (archived)
+     setIsEditing(initialIncome === 0 && !disabled);
+  }, [initialIncome, disabled]); // Depend on disabled state too
+
+   // Update input value display if currency changes while not editing
+   useEffect(() => {
+     if (!isEditing) {
+       setIncome(initialIncome.toString()); // Reflect potential formatting changes if needed
+     }
+   }, [currency, initialIncome, isEditing]);
+
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     // Allow only numbers and a single decimal point
@@ -39,7 +50,9 @@ export function IncomeInput({ initialIncome, onIncomeChange, disabled = false }:
   };
 
   const handleEdit = () => {
-    setIsEditing(true);
+     if (!disabled) { // Prevent editing if disabled
+       setIsEditing(true);
+     }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -50,14 +63,14 @@ export function IncomeInput({ initialIncome, onIncomeChange, disabled = false }:
 
 
   return (
-    <div className="mb-6 p-4 border rounded-lg shadow-sm bg-card">
+    <div className="mb-4 p-4 border rounded-lg shadow-sm bg-card">
       <Label htmlFor="income" className="text-lg font-semibold mb-2 block">
         Total Income
       </Label>
       <div className="flex items-center gap-2">
         {isEditing && !disabled ? (
           <>
-            <span className="text-muted-foreground">$</span>
+            <span className="text-muted-foreground text-xl">{currencySymbol}</span>
             <Input
               type="text" // Use text to allow intermediate states like "100."
               id="income"
@@ -76,7 +89,7 @@ export function IncomeInput({ initialIncome, onIncomeChange, disabled = false }:
           </>
         ) : (
           <>
-            <span className="text-xl font-medium flex-grow">{formatCurrency(initialIncome)}</span>
+            <span className="text-xl font-medium flex-grow">{formatCurrency(initialIncome, currency)}</span>
             {!disabled && (
               <Button size="icon" variant="ghost" onClick={handleEdit} aria-label="Edit Income">
                 <Edit2 className="h-4 w-4" />

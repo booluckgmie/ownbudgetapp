@@ -6,7 +6,7 @@ import type { Commitment } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { PlusCircle, Save } from 'lucide-react';
+import { PlusCircle, Save, X } from 'lucide-react'; // Added X for cancel
 import { z } from 'zod';
 
 interface CommitmentFormProps {
@@ -14,6 +14,7 @@ interface CommitmentFormProps {
   editCommitment?: (commitment: Commitment) => void; // Optional for editing
   commitmentToEdit?: Commitment | null; // Commitment data if editing
   onEditCancel?: () => void; // Function to call when cancelling edit
+  currencySymbol: string; // Added currency symbol prop
   disabled?: boolean;
 }
 
@@ -28,6 +29,7 @@ export function CommitmentForm({
     editCommitment,
     commitmentToEdit,
     onEditCancel,
+    currencySymbol,
     disabled = false
 }: CommitmentFormProps) {
   const [name, setName] = useState('');
@@ -91,23 +93,32 @@ export function CommitmentForm({
 
     if (isEditing && commitmentToEdit && editCommitment) {
         editCommitment({ ...commitmentToEdit, name: result.data.name, value: result.data.value });
+        // onEditCancel will be called by parent to clear edit state typically
     } else {
         addCommitment(result.data.name, result.data.value);
-    }
-
-    // Reset form only if adding, not editing (edit state is handled by useEffect)
-    if (!isEditing) {
+         // Reset form only if adding
         setName('');
         setValue('');
     }
     setErrors({}); // Clear errors on successful submit
   };
 
+  const handleCancel = () => {
+      if(onEditCancel) {
+          onEditCancel();
+      }
+      // Also reset local form state on explicit cancel
+      setName('');
+      setValue('');
+      setErrors({});
+  }
+
   return (
     <form onSubmit={handleSubmit} className="mb-4 p-4 border rounded-lg shadow-sm bg-card">
       <h3 className="text-md font-semibold mb-3">{isEditing ? 'Edit Commitment' : 'Add New Commitment'}</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-        <div>
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-x-4 gap-y-2 items-start">
+        {/* Name Input - takes full width */}
+        <div className="sm:col-span-2">
             <Label htmlFor="commitmentName">Item Name</Label>
             <Input
               id="commitmentName"
@@ -122,36 +133,41 @@ export function CommitmentForm({
             />
              {errors.name && <p id="name-error" className="text-sm text-destructive mt-1">{errors.name}</p>}
         </div>
-        <div>
-            <Label htmlFor="commitmentValue">Value ($)</Label>
-            <Input
-              id="commitmentValue"
-              type="text" // Use text for better control over input format
-              value={value}
-              onChange={handleValueChange}
-              placeholder="e.g., 500.00"
-              inputMode="decimal"
-              className={`mt-1 ${errors.value ? 'border-destructive' : ''}`}
-              disabled={disabled}
-               aria-invalid={!!errors.value}
-               aria-describedby={errors.value ? "value-error" : undefined}
-            />
-             {errors.value && <p id="value-error" className="text-sm text-destructive mt-1">{errors.value}</p>}
-        </div>
-      </div>
-      <div className="flex justify-end gap-2 mt-4">
-            {isEditing && (
-                <Button type="button" variant="outline" onClick={onEditCancel} disabled={disabled}>
-                    Cancel
-                </Button>
-            )}
-            <Button type="submit" disabled={disabled}>
-                {isEditing ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-                {isEditing ? 'Save Changes' : 'Add Commitment'}
-            </Button>
-      </div>
 
+         {/* Value Input */}
+         <div className="flex-grow">
+             <Label htmlFor="commitmentValue">Value ({currencySymbol})</Label>
+             <div className="flex items-center mt-1">
+                <span className="text-muted-foreground mr-1">{currencySymbol}</span>
+                 <Input
+                   id="commitmentValue"
+                   type="text" // Use text for better control over input format
+                   value={value}
+                   onChange={handleValueChange}
+                   placeholder="e.g., 500.00"
+                   inputMode="decimal"
+                   className={`flex-grow ${errors.value ? 'border-destructive' : ''}`}
+                   disabled={disabled}
+                    aria-invalid={!!errors.value}
+                    aria-describedby={errors.value ? "value-error" : undefined}
+                 />
+            </div>
+              {errors.value && <p id="value-error" className="text-sm text-destructive mt-1">{errors.value}</p>}
+         </div>
+
+         {/* Action Buttons - align to the right of value input on larger screens */}
+          <div className="flex justify-end gap-2 mt-1 sm:mt-6 sm:self-end">
+             {isEditing && (
+                 <Button type="button" variant="outline" size="icon" onClick={handleCancel} disabled={disabled} aria-label="Cancel Edit">
+                     <X className="h-4 w-4"/>
+                 </Button>
+             )}
+             <Button type="submit" disabled={disabled || (!name && !value && !isEditing)} className="flex-grow sm:flex-grow-0">
+                 {isEditing ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                 {isEditing ? 'Save' : 'Add'}
+             </Button>
+       </div>
+      </div>
     </form>
   );
 }
-
