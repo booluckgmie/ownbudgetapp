@@ -1,3 +1,10 @@
+
+import { CommitmentCompassApp } from '@/components/commitment-compass-app';
+
 export default function Home() {
-  return <></>;
+  return (
+     <main>
+        <CommitmentCompassApp />
+     </main>
+  );
 }
