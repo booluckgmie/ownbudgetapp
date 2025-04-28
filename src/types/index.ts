@@ -20,6 +20,7 @@ export interface Settings {
 
 // Define a list of common currencies for selection
 export const CURRENCIES = [
+    { code: 'MYR', name: 'Malaysia Ringgit', symbol: 'RM' },
     { code: 'USD', name: 'US Dollar', symbol: '$' },
     { code: 'EUR', name: 'Euro', symbol: '€' },
     { code: 'GBP', name: 'British Pound', symbol: '£' },
@@ -32,4 +33,4 @@ export const CURRENCIES = [
     { code: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
 ];
 
-export const DEFAULT_CURRENCY = 'USD';
+export const DEFAULT_CURRENCY = 'RM';
