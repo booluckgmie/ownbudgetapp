@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { formatCurrency } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label'; // Import Label component
 
 
 interface StatsDashboardProps {
